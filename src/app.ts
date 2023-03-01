@@ -9,6 +9,7 @@ import { Engine, Scene, ArcRotateCamera,
 import { AdvancedDynamicTexture, Button, Control } from "@babylonjs/gui";
 import { Player } from "./characterController";
 import { Environment } from "./environment";
+import { PlayerInput } from "./inputController";
 
 enum State { START = 0, GAME = 1, LOSE = 2, CUTSCENE = 3 }
 
@@ -20,6 +21,7 @@ class App {
 
     // Game State Related
     public assets;
+    private _input: PlayerInput;
     private _enviroment;
     private _player: Player;
 
@@ -211,8 +213,8 @@ class App {
             outer.bakeTransformIntoVertices(Matrix.Translation(0, 1.5, 0));
 
             // for collisions
-            outer.ellipsoid = new Vector3(1, 1.5, 1);
-            outer.ellipsoidOffset = new Vector3(0, 1.5, 0);
+            // outer.ellipsoid = new Vector3(1, 1.5, 1);
+            // outer.ellipsoidOffset = new Vector3(0, 1.5, 0);
 
             outer.rotationQuaternion = new Quaternion(0, 1, 0, 0); // rotate the player mesh 180
             
@@ -294,6 +296,9 @@ class App {
             scene.detachControl(); // observables disabled
         });
 
+        //--INPUT--
+        this._input = new PlayerInput(scene); // detect keyboard/mobile inputs
+
         await this._initializeGameAsync(scene);
 
         // WHEN SCENE FINISHED LOADING
@@ -321,7 +326,8 @@ class App {
         shadowGenerator.darkness = 0.4;
 
         // Create the player
-        this._player = new Player(this.assets, scene, shadowGenerator); // do not have inputs yet
+        this._player = new Player(this.assets, scene, shadowGenerator, this._input);
+        const camera = this._player.activatePlayerCamera();
     }
 
     private async _goToLose(): Promise<void> {
