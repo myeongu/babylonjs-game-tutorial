@@ -22,7 +22,7 @@ class App {
     // Game State Related
     public assets;
     private _input: PlayerInput;
-    private _enviroment;
+    private _environment;
     private _player: Player;
 
     // Scene - related
@@ -192,8 +192,8 @@ class App {
 
         // CREATE ENVIRONMENT
         const environment = new Environment(scene);
-        this._enviroment = environment;
-        await this._enviroment.load();
+        this._environment = environment;
+        await this._environment.load();
         await this._loadCharacterAssets(scene);
     }
 
@@ -250,7 +250,7 @@ class App {
             bodymtl.diffuseColor = new Color3(.8, .5, .5);
             body.material = bodymtl;
             body.isPickable = false;
-            body.bakeTransformIntoVertices(Matrix.Translation(0, 1.5, 0)); // simultes the imported mesh's origin
+            body.bakeTransformIntoVertices(Matrix.Translation(0, 1.5, 0)); // simulates the imported mesh's origin
 
             // parent the meshes
             box.parent = body;

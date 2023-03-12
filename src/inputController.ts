@@ -10,6 +10,10 @@ export class PlayerInput {
     public horizontalAxis: number = 0;
     public verticalAxis: number = 0;
 
+    // jumping and dashing
+    public jumpKeyDown: boolean = false;
+    public dashing: boolean = false;
+
     constructor(scene: Scene) {
         scene.actionManager = new ActionManager(scene);
 
@@ -27,6 +31,7 @@ export class PlayerInput {
     }
 
     private _updateFromKeyboard(): void {
+        // console.log("inputMap: ", this.inputMap);
         if (this.inputMap["ArrowUp"]) {
             this.vertical = Scalar.Lerp(this.vertical, 1, 0.2);
             this.verticalAxis = 1;
@@ -47,6 +52,20 @@ export class PlayerInput {
         } else {
             this.horizontal = 0;
             this.horizontalAxis = 0;
+        }
+
+        // dash check
+        if (this.inputMap["Shift"]) {
+            this.dashing = true;
+        } else {
+            this.dashing = false;
+        }
+
+        // jump checks (SPACE)
+        if (this.inputMap[" "]) {
+            this.jumpKeyDown = true;
+        } else {
+            this.jumpKeyDown = false;
         }
     }
 }
