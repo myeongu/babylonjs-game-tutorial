@@ -4,7 +4,7 @@ import "@babylonjs/loaders/glTF";
 import { Engine, Scene, ArcRotateCamera, 
 	Vector3, HemisphericLight, Mesh, MeshBuilder,
     Color3, Color4, FreeCamera, Matrix, Quaternion,
-    StandardMaterial, PointLight, ShadowGenerator
+    StandardMaterial, PointLight, ShadowGenerator, SceneLoader
 } from "@babylonjs/core";
 import { AdvancedDynamicTexture, Button, Control } from "@babylonjs/gui";
 import { Player } from "./characterController";
@@ -183,6 +183,7 @@ class App {
         var finishedLoading = false;
         await this._setUpGame().then(res => {
             finishedLoading = true;
+            this._goToGame();
         });
     }
     
@@ -213,52 +214,30 @@ class App {
             outer.bakeTransformIntoVertices(Matrix.Translation(0, 1.5, 0));
 
             // for collisions
-            // outer.ellipsoid = new Vector3(1, 1.5, 1);
-            // outer.ellipsoidOffset = new Vector3(0, 1.5, 0);
+            outer.ellipsoid = new Vector3(1, 1.5, 1);
+            outer.ellipsoidOffset = new Vector3(0, 1.5, 0);
 
             outer.rotationQuaternion = new Quaternion(0, 1, 0, 0); // rotate the player mesh 180
             
-            var box = MeshBuilder.CreateBox(
-                "Small1",
-                { width: 0.5, depth: 0.5, height: 0.5, 
-                    faceColors: [
-                        new Color4(0,0,0,1),
-                        new Color4(0,0,0,1),
-                        new Color4(0,0,0,1),
-                        new Color4(0,0,0,1),
-                        new Color4(0,0,0,1),
-                        new Color4(0,0,0,1),
-                    ]
-                },
+            return SceneLoader.ImportMeshAsync(
+                null,
+                "https://babylonjs.github.io/SummerFestival/models/",
+                "player.glb",
                 scene
-            );
-            box.position.y = 1.5;
-            box.position.z = 1;
+            ).then((result) => {
+                const root = result.meshes[0];
+                // body is our actual player mesh
+                const body = root;
+                body.parent = outer;
+                body.isPickable = false // so our saycasts don't hit ourself
+                body.getChildMeshes().forEach(m => {
+                    m.isPickable = false;
+                })
 
-            var body = MeshBuilder.CreateCylinder(
-                "body",
-                {
-                    height: 3,
-                    diameterTop: 2,
-                    diameterBottom: 2,
-                    tessellation: 0,
-                    subdivisions: 0
-                },
-                scene
-            );
-            var bodymtl = new StandardMaterial("red", scene);
-            bodymtl.diffuseColor = new Color3(.8, .5, .5);
-            body.material = bodymtl;
-            body.isPickable = false;
-            body.bakeTransformIntoVertices(Matrix.Translation(0, 1.5, 0)); // simulates the imported mesh's origin
-
-            // parent the meshes
-            box.parent = body;
-            body.parent = outer;
-
-            return {
-                mesh: outer as Mesh
-            }
+                return {
+                    mesh: outer as Mesh
+                }
+            });
         }
         return loadCharacter().then(assets=>{
             this.assets = assets;
@@ -303,7 +282,7 @@ class App {
 
         // WHEN SCENE FINISHED LOADING
         await scene.whenReadyAsync();
-        scene.getMeshByName("outer")!.position = new Vector3(0,3,0);
+        scene.getMeshByName("outer")!.position = scene.getTransformNodeByName("startPosition")!.getAbsolutePosition(); // move the player to the start position
         // get rid of start scene, switch to gamescene and change states
         this._scene.dispose();
         this._state = State.GAME;
