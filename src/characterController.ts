@@ -1,4 +1,4 @@
-import { TransformNode, Scene, Mesh, ShadowGenerator, Quaternion, Ray, ArcRotateCamera, Vector3, UniversalCamera } from "@babylonjs/core";
+import { TransformNode, Scene, Mesh, ShadowGenerator, Quaternion, Ray, ArcRotateCamera, Vector3, UniversalCamera, ParticleSystem, ActionManager } from "@babylonjs/core";
 
 export class Player extends TransformNode {
     public camera: UniversalCamera;
@@ -37,7 +37,17 @@ export class Player extends TransformNode {
     private _gravity: Vector3 = new Vector3();
     private _lastGroundPos: Vector3 = Vector3.Zero(); // keep track of the last grounded position
     private _grounded: boolean;
-    private _jumpCount:number = 1;
+    private _jumpCount: number = 1;
+
+    // player variables
+    public lanternsLit: number = 1; // num lanterns lit
+    public totalLanterns: number;
+    public win: boolean = false; // whether the game is won
+
+    // sparkler
+    public sparkler: ParticleSystem; // sparkler particle system
+    public sparkLit: boolean = true;
+    public sparkReset: boolean = false;
     
     constructor(assets, scene: Scene, shadowGenerator: ShadowGenerator, input?) {
         super("player", scene);
@@ -47,7 +57,9 @@ export class Player extends TransformNode {
         this.mesh = assets.mesh;
         this.mesh.parent = this;
         
-        this.scene.getLightByName("sparklight")!.parent = this.scene.getTransformNodeByName("Empty");
+        // this.scene.getLightByName("sparklight")!.parent = this.scene.getTransformNodeByName("Empty");
+        // --COLLISIONS--
+        this.mesh.actionManager = new ActionManager(this.scene);
 
         shadowGenerator.addShadowCaster(assets.mesh); // the player mesh will cast shadow
 
@@ -81,8 +93,6 @@ export class Player extends TransformNode {
         //--MOVEMENT BASED ON CAMERA (as it rotates)--
         let fwd = this._camRoot.forward;
         let right = this._camRoot.right;
-        // console.log("fwd: ", fwd);
-        // console.log("right: ", fwd);
         let correctedVertical = fwd.scaleInPlace(this._v);
         let correctedHorizontal = right.scaleInPlace(this._h);
 
@@ -90,9 +100,6 @@ export class Player extends TransformNode {
         let move = correctedHorizontal.addInPlace(correctedVertical);
 
         // clear y so that the character doesn't fly up, normalize for next step
-        if (dashFactor != 1) {
-            console.log("dash factor: ", dashFactor);
-        }
         this._moveDirection = new Vector3((move).normalize().x * dashFactor, 0, (move).normalize().z * dashFactor);
 
         // clamp the input value so that diagonal movement isn't twice as fast
@@ -121,7 +128,7 @@ export class Player extends TransformNode {
         this.mesh.rotationQuaternion = Quaternion.Slerp(this.mesh.rotationQuaternion!, targ, 10 * this._deltaTime);
     }
 
-    private _floorRaycast(offsetx:number, offsetz:number, raycastlen: number): Vector3 {
+    private _floorRaycast(offsetx: number, offsetz: number, raycastlen: number): Vector3 {
         let raycastFloorPos = new Vector3(this.mesh.position.x + offsetx, this.mesh.position.y + 1.5, this.mesh.position.z + offsetz);
         let ray = new Ray(raycastFloorPos, Vector3.Up().scale(-1), raycastlen);
 
