@@ -31,6 +31,28 @@ export class Environment {
         assets.allMeshes.forEach(m => {
             m.receiveShadows = true;
             m.checkCollisions = true;
+
+            if (m.name == "ground") { // don't check for collisions, don't allow for raycasting to detect it(cna't land on it)
+                m.checkCollisions = false;
+                m.isPickable = false;
+            }
+            // areas that will use box collisions
+            if (m.name.includes("stairs") || m.name == "cityentranceground" || 
+                m.name == "fishingground.001" || m.name.includes("lilyflwr")) {
+                m.checkCollisions = false;
+                m.isPickable = false;
+            }
+            // collision meshes
+            if (m.name.includes("collisions")) {
+                m.isVisible = false;
+                m.isPickable = true;
+            }
+            // trigger meshes
+            if (m.name.includes("Trigger")) {
+                m.isVisible = false;
+                m.isPickable = false;
+                m.checkCollisions = false;
+            }
         })
 
         // --LANTERNS--

@@ -1,4 +1,4 @@
-import { TransformNode, Scene, Mesh, ShadowGenerator, Quaternion, Ray, ArcRotateCamera, Vector3, UniversalCamera, ParticleSystem, ActionManager } from "@babylonjs/core";
+import { TransformNode, Scene, Mesh, ShadowGenerator, Quaternion, Ray, ArcRotateCamera, Vector3, UniversalCamera, ParticleSystem, ActionManager, ExecuteCodeAction } from "@babylonjs/core";
 
 export class Player extends TransformNode {
     public camera: UniversalCamera;
@@ -18,6 +18,7 @@ export class Player extends TransformNode {
     private static readonly GRAVITY: number = -2.8;
     private static readonly DASH_FACTOR: number = 2.5;
     private static readonly DASH_TIME: number = 10; // how many frames the dash lasts
+    private static readonly DOWN_TILT: Vector3 = new Vector3(0.8290313946973066, 0, 0);
     private static readonly ORIGINAL_TILT: Vector3 = new Vector3(0.5934119456780721, 0, 0);
     public dashTime: number = 0;
 
@@ -60,7 +61,38 @@ export class Player extends TransformNode {
         // this.scene.getLightByName("sparklight")!.parent = this.scene.getTransformNodeByName("Empty");
         // --COLLISIONS--
         this.mesh.actionManager = new ActionManager(this.scene);
+        
+        this.mesh.actionManager.registerAction(
+            new ExecuteCodeAction(
+                {
+                    trigger: ActionManager.OnIntersectionEnterTrigger,
+                    parameter: this.scene.getMeshByName("destination")
+                }, 
+                () => {
+                    if(this.lanternsLit == 22) {
+                        this.win = true;
+                        // tilt camera to look at where the fireworks will be displayed
+                        this._yTilt.rotation = new Vector3(5.689773361501514, 0.23736477827122882, 0);
+                        this._yTilt.position = new Vector3(0, 6, 0);
+                        this.camera.position.y = 17;
+                    }
+                }
+            )
+        );
 
+        // World ground detection
+        // if player falls through "world", reset the position to the last safe grounded position
+        this.mesh.actionManager.registerAction(
+            new ExecuteCodeAction({
+                trigger: ActionManager.OnIntersectionEnterTrigger, 
+                parameter: this.scene.getMeshByName("ground")
+            },
+                () => {
+                    this.mesh.position.copyFrom(this._lastGroundPos); // need to use copy or else they will be both pointing at the same thing & update together
+                }
+            )
+        );
+        
         shadowGenerator.addShadowCaster(assets.mesh); // the player mesh will cast shadow
 
         this._input = input; // inputs we will get from inputController.ts
@@ -251,12 +283,32 @@ export class Player extends TransformNode {
 
     // TODO: link to moving of character
     private _updateCamera(): void {
+        if (this.mesh.intersectsMesh(this.scene.getMeshByName("cornerTrigger")!)) {
+            if (this._input.horizontalAxis > 0) { // rotates to the right
+                this._camRoot.rotation = Vector3.Lerp(this._camRoot.rotation, new Vector3(this._camRoot.rotation.x, Math.PI / 2, this._camRoot.rotation.z), 0.4);
+            } else if (this._input.horizontalAxis < 0) { // rotates to the left
+                this._camRoot.rotation = Vector3.Lerp(this._camRoot.rotation, new Vector3(this._camRoot.rotation.x, Math.PI, this._camRoot.rotation.z), 0.4);
+            }
+        }
+
+        // rotates the camera to point down at the player when they enter the area, and returns it back to normal when they exit
+        if (this.mesh.intersectsMesh(this.scene.getMeshByName("festivalTrigger")!)) {
+            if (this._input.verticalAxis > 0) {
+                this._yTilt.rotation = Vector3.Lerp(this._yTilt.rotation, Player.DOWN_TILT, 0.4);
+            } else if (this._input.verticalAxis < 0) {
+                this._yTilt.rotation = Vector3.Lerp(this._yTilt.rotation, Player.ORIGINAL_TILT, 0.4);
+            }
+        }
+        // once you've reached the destination area, return back to the original orientation, if they leave rotate it to the previous orientation
+        if (this.mesh.intersectsMesh(this.scene.getMeshByName("destinationTrigger")!)) {
+            if (this._input.verticalAxis > 0) {
+                this._yTilt.rotation = Vector3.Lerp(this._yTilt.rotation, Player.ORIGINAL_TILT, 0.4);
+            } else if (this._input.verticalAxis < 0) {
+                this._yTilt.rotation = Vector3.Lerp(this._yTilt.rotation, Player.DOWN_TILT, 0.4);
+            }
+        }
         let centerPlayer = this.mesh.position.y + 2;
-        this._camRoot.position = Vector3.Lerp(
-            this._camRoot.position,
-            new Vector3(this.mesh.position.x, centerPlayer, this.mesh.position.z),
-            0.4
-        );
+        this._camRoot.position = Vector3.Lerp(this._camRoot.position, new Vector3(this.mesh.position.x, centerPlayer, this.mesh.position.z), 0.4);
     }
 
     private _setupPlayerCamera(): UniversalCamera {
