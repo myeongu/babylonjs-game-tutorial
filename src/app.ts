@@ -4,9 +4,9 @@ import "@babylonjs/loaders/glTF";
 import { Engine, Scene, ArcRotateCamera, 
 	Vector3, HemisphericLight, Mesh, MeshBuilder,
     Color3, Color4, FreeCamera, Matrix, Quaternion,
-    StandardMaterial, PointLight, ShadowGenerator, SceneLoader
+    StandardMaterial, PointLight, ShadowGenerator, SceneLoader, Sound, EngineFactory, Effect, PostProcess, GlowLayer, CubeTexture
 } from "@babylonjs/core";
-import { AdvancedDynamicTexture, Button, Control, Image } from "@babylonjs/gui";
+import { StackPanel, Rectangle, TextBlock, AdvancedDynamicTexture, Button, Control, Image } from "@babylonjs/gui";
 import { Player } from "./characterController";
 import { Environment } from "./environment";
 import { PlayerInput } from "./inputController";
@@ -27,18 +27,32 @@ class App {
     private _player: Player;
     private _ui: Hud;
 
+    // Sounds
+    public game: Sound;
+    public end: Sound;
+
     // Scene - related
     private _state: number = 0;
     private _cutScene: Scene;
     private _gamescene: Scene;
 
+    // post process
+    private _transition: boolean = false;
+
     constructor() {
         // create the canvas html element and attach it to the webpage
         this._canvas = this._createCanvas();
-        
-        this._engine = new Engine(this._canvas, true); // 2nd params: antialias = 계단현상 최소화
+
+        // initialize babylon scene and engine
+        this._init();
+    }
+
+    private async _init(): Promise<void> {
+        // this._engine = new Engine(this._canvas, true); // 2nd params: antialias = 계단현상 최소화
+        this._engine = (await EngineFactory.CreateAsync(this._canvas, undefined)) as Engine;
         this._scene = new Scene(this._engine);
 
+        // for development -> make inspector visible/invisible
         window.addEventListener("keydown", (ev) => {
             let key = ev.keyCode || ev.key;
             // Shift+Ctrl+Alt+I
@@ -57,17 +71,17 @@ class App {
 
     private _createCanvas(): HTMLCanvasElement {
         // Commented out for devlopment
-        // document.documentElement.style["overflow"] = "hidden";
-        // document.documentElement.style.overflow = "hidden";
-        // document.documentElement.style.width = "100%";
-        // document.documentElement.style.height = "100%";
-        // document.documentElement.style.margin = "0";
-        // document.documentElement.style.padding = "0";
-        // document.body.style.overflow = "hidden";
-        // document.body.style.width = "100%";
-        // document.body.style.height = "100%";
-        // document.body.style.margin = "0";
-        // document.body.style.padding = "0";
+        document.documentElement.style["overflow"] = "hidden";
+        document.documentElement.style.overflow = "hidden";
+        document.documentElement.style.width = "100%";
+        document.documentElement.style.height = "100%";
+        document.documentElement.style.margin = "0";
+        document.documentElement.style.padding = "0";
+        document.body.style.overflow = "hidden";
+        document.body.style.width = "100%";
+        document.body.style.height = "100%";
+        document.body.style.margin = "0";
+        document.body.style.padding = "0";
 
         // create the canvas html element and attach it to the webpage
         this._canvas = document.createElement("canvas");
@@ -97,6 +111,10 @@ class App {
                         this._goToLose();
                         this._ui.stopTimer();
                     }
+                    if (this._ui.quit) {
+                        this._goToStart();
+                        this._ui.quit = false;
+                    }
                     this._scene.render();
                     break;
                 case State.LOSE:
@@ -121,9 +139,41 @@ class App {
         let camera = new FreeCamera("camera1", new Vector3(0,0,0), scene);
         camera.setTarget(Vector3.Zero());
 
+        //--SOUNDS--
+        // https://raw.githubusercontent.com/BabylonJS/SummerFestival/master/public
+        const start = new Sound("startSong", "https://raw.githubusercontent.com/BabylonJS/SummerFestival/master/public/sounds/copycat(revised).mp3", scene, function () {
+        }, {
+            volume: 0.25,
+            loop: true,
+            autoplay: true
+        });
+        const sfx = new Sound("selection", "https://raw.githubusercontent.com/BabylonJS/SummerFestival/master/public/sounds/vgmenuselect.wav", scene, function () {
+        });
+
+        //--GUI--
         // create a fullscreen ui for all of our GUI elements
         const guiMenu = AdvancedDynamicTexture.CreateFullscreenUI("UI");
-        guiMenu.idealHeight = 720; // fit our fullscreen ui to this height
+        guiMenu.idealHeight = 720;
+
+        //background image
+        const imageRect = new Rectangle("titleContainer");
+        imageRect.width = 0.8;
+        imageRect.thickness = 0;
+        guiMenu.addControl(imageRect);
+
+        const startbg = new Image("startbg", "https://raw.githubusercontent.com/BabylonJS/SummerFestival/master/public/sprites/start.jpeg");
+        imageRect.addControl(startbg);
+
+        const title = new TextBlock("titile", "BABYLON GAME TUTORIAL");
+        title.resizeToFit = true;
+        title.fontFamily = "Ceviche One";
+        title.fontSize = "64px";
+        title.color = "white";
+        title.resizeToFit = true;
+        title.top = "14px";
+        title.width = 0.8;
+        title.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+        imageRect.addControl(startbg);
 
         // create a simple button
         const startBtn = Button.CreateSimpleButton("start", "PLAY");
@@ -135,11 +185,103 @@ class App {
         startBtn.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
         guiMenu.addControl(startBtn);
 
+        //set up transition effect
+        Effect.RegisterShader("fade",
+            "precision highp float;" +
+            "varying vec2 vUV;" +
+            "uniform sampler2D textureSampler; " +
+            "uniform float fadeLevel; " +
+            "void main(void){" +
+            "vec4 baseColor = texture2D(textureSampler, vUV) * fadeLevel;" +
+            "baseColor.a = 1.0;" +
+            "gl_FragColor = baseColor;" +
+            "}");
+        
+        let fadeLevel = 1.0;
+        this._transition = false;
+        scene.registerBeforeRender(() => {
+            if (this._transition) {
+                fadeLevel -= .05;
+                if(fadeLevel <= 0){
+                    this._goToCutScene();
+                    this._transition = false;
+                }
+            }
+        })
+
         // this handles interactions with the start button attached to the scene
         startBtn.onPointerDownObservable.add(() => {
-            this._goToCutScene();
-            scene.detachControl(); // observables disabled
+            // fade screen
+            const postProcess = new PostProcess("Fade", "fade", ["fadeLevel"], null, 1.0, camera);
+            postProcess.onApply = (effect) => {
+                effect.setFloat("fadeLevel", fadeLevel);
+            };
+            this._transition = true;
+            //sounds
+            sfx.play();
+
+            scene.detachControl(); //observables disabled
         });
+
+        let isMobile = false;
+        //--MOBILE--
+        if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+            isMobile = true;
+            //popup for mobile to rotate screen
+            const rect1 = new Rectangle();
+            rect1.height = 0.2;
+            rect1.width = 0.3;
+            rect1.verticalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
+            rect1.horizontalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
+            rect1.background = "white";
+            rect1.alpha = 0.8;
+            guiMenu.addControl(rect1);
+
+            const rect = new Rectangle();
+            rect.height = 0.2;
+            rect.width = 0.3;
+            rect.verticalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
+            rect.horizontalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
+            rect.color = "whites";
+            guiMenu.addControl(rect);
+
+            const stackPanel = new StackPanel();
+            stackPanel.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
+            rect.addControl(stackPanel);
+
+            //image
+            const image = new Image("rotate", "https://raw.githubusercontent.com/BabylonJS/SummerFestival/master/public/sprites/rotate.png")
+            image.width = 0.4;
+            image.height = 0.6;
+            image.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+            rect.addControl(image);
+
+            //alert message
+            const alert = new TextBlock("alert", "For the best experience, please rotate your device");
+            alert.fontSize = "16px";
+            alert.fontFamily = "Viga";
+            alert.color = "black";
+            alert.resizeToFit = true;
+            alert.textWrapping = true;
+            stackPanel.addControl(alert);
+
+            const closealert = Button.CreateSimpleButton("close", "X");
+            closealert.height = "24px";
+            closealert.width = "24px";
+            closealert.color = "black";
+            stackPanel.addControl(closealert);
+
+            //remove control of the play button until the user closes the notification(allowing for fullscreen mode)
+            startBtn.isHitTestVisible = false;
+
+            closealert.onPointerUpObservable.add(() => {
+                guiMenu.removeControl(rect);
+                guiMenu.removeControl(rect1);
+
+                startBtn.isHitTestVisible = true;
+                this._engine.enterFullscreen(true);
+            })
+        }
 
         // SCENE FINISHED LOADING
         await scene.whenReadyAsync();
@@ -437,19 +579,37 @@ class App {
         var finishedLoading = false;
         await this._setUpGame().then(res => {
             finishedLoading = true;
-            // this._goToGame();
         });
     }
     
     private async _setUpGame() {
+        // CREATE SCENE
         let scene = new Scene(this._engine);
         this._gamescene = scene;
+
+        // SOUNDS
+        this._loadSounds(scene);
 
         // CREATE ENVIRONMENT
         const environment = new Environment(scene);
         this._environment = environment;
+        // Load environment and character assets
         await this._environment.load();
         await this._loadCharacterAssets(scene);
+    }
+
+    // loading sounds for the game scene
+    private _loadSounds(scene: Scene): void {
+        this.game = new Sound("gameSong", "https://raw.githubusercontent.com/BabylonJS/SummerFestival/master/public/sounds/Christmassynths.wav", scene, function() {
+        }, {
+            loop: true,
+            volume: 0.1
+        });
+
+        this.end = new Sound("endSong", "https://raw.githubusercontent.com/BabylonJS/SummerFestival/master/public/sounds/copycat(revised).mp3", scene, function () {
+        }, {
+            volume: 0.25
+        });
     }
 
     private async _loadCharacterAssets(scene) {
@@ -489,7 +649,8 @@ class App {
                 })
 
                 return {
-                    mesh: outer as Mesh
+                    mesh: outer as Mesh,
+                    animationGroups: result.animationGroups
                 }
             });
         }
@@ -502,11 +663,6 @@ class App {
         // SETUP SCENE
         this._scene.detachControl();
         let scene = this._gamescene;
-        scene.clearColor = new Color4(
-            0.01568627450980392, 
-            0.01568627450980392, 
-            0.20392156862745098
-        );
 
         // GUI
         const ui = new Hud(scene);
@@ -514,26 +670,15 @@ class App {
         // do not detect any inputs from this ui while the game is loading
         scene.detachControl();
         
-        // create a simple button
-        // const playerUI = AdvancedDynamicTexture.CreateFullscreenUI("UI");
-        // const loseBtn = Button.CreateSimpleButton("lose", "LOSE");
-        // loseBtn.width = 0.2;
-        // loseBtn.height = "40px";
-        // loseBtn.color = "white";
-        // loseBtn.top = "-14px";
-        // loseBtn.thickness = 0;
-        // loseBtn.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
-        // playerUI.addControl(loseBtn);
-
-        // this handle interactions with the start button attached to the scene
-        // loseBtn.onPointerDownObservable.add(() => {
-        //     this._goToLose();
-        //     scene.detachControl(); // observables disabled
-        // });
+        //IBL (image based lighting) - to give scene an ambient light
+        const envHdri = CubeTexture.CreateFromPrefilteredData("https://raw.githubusercontent.com/BabylonJS/SummerFestival/master/public/textures/envtext.env", scene);
+        envHdri.name = "env";
+        envHdri.gammaSpace = false;
+        scene.environmentTexture = envHdri;
+        scene.environmentIntensity = 0.04;
 
         //--INPUT--
-        this._input = new PlayerInput(scene); // detect keyboard/mobile inputs
-        // this._input = new PlayerInput(scene, this._ui); // detect keyboard/mobile inputs
+        this._input = new PlayerInput(scene, this._ui); // detect keyboard/mobile inputs
         // primitive character and setting
         await this._initializeGameAsync(scene);
 
@@ -543,7 +688,7 @@ class App {
 
         // set up the game timer and sparkler timer -- linked to the ui
         this._ui.startTimer();
-        this._ui.startSparklerTimer();
+        this._ui.startSparklerTimer(this._player.sparkler);
         
         // get rid of start scene, switch to gamescene and change states
         this._scene.dispose();
@@ -552,11 +697,132 @@ class App {
         this._engine.hideLoadingUI();
         // the game is ready, attach control back
         this._scene.attachControl();
+
+        // SOUNDS
+        this.game.play();
+    }
+
+    private _showWin(): void {
+
+        //stop game sound and play end song
+        this.game.dispose();
+        this.end.play();
+        this._player.onRun.clear();
+
+        const winUI = AdvancedDynamicTexture.CreateFullscreenUI("UI");
+        winUI.idealHeight = 720;
+
+        const rect = new Rectangle();
+        rect.thickness = 0;
+        rect.background = "black";
+        rect.alpha = 0.4;
+        rect.width = 0.4;
+        winUI.addControl(rect);
+
+        const stackPanel = new StackPanel("credits");
+        stackPanel.width = 0.4;
+        stackPanel.fontFamily = "Viga";
+        stackPanel.fontSize = "16px";
+        stackPanel.color = "white";
+        winUI.addControl(stackPanel);
+
+        const wincreds = new TextBlock("special");
+        wincreds.resizeToFit = true;
+        wincreds.color = "white";
+        wincreds.text = "Special thanks to the Babylon Team!";
+        wincreds.textWrapping = true;
+        wincreds.height = "24px";
+        wincreds.width = "100%";
+        wincreds.fontFamily = "Viga";
+        stackPanel.addControl(wincreds);
+
+        //Credits for music & SFX
+        const music = new TextBlock("music", "Music");
+        music.fontSize = 22;
+        music.resizeToFit = true;
+        music.textWrapping = true;
+        
+        const source = new TextBlock("sources", "Sources: freesound.org, opengameart.org, and itch.io")
+        source.textWrapping = true;
+        source.resizeToFit = true;
+
+        const jumpCred = new TextBlock("jumpCred", "jump2 by LloydEvans09 - freesound.org");
+        jumpCred.textWrapping = true;
+        jumpCred.resizeToFit = true;
+
+        const walkCred = new TextBlock("walkCred", "Concrete 2 by MayaSama @mayasama.itch.io / ig: @mayaragandra");
+        walkCred.textWrapping = true;
+        walkCred.resizeToFit = true;
+
+        const gameCred = new TextBlock("gameSong", "Christmas synths by 3xBlast - opengameart.org"); 
+        gameCred.textWrapping = true;
+        gameCred.resizeToFit = true;
+
+        const pauseCred = new TextBlock("pauseSong", "Music by Matthew Pablo / www.matthewpablo.com - opengameart.org");
+        pauseCred.textWrapping = true;
+        pauseCred.resizeToFit = true;
+
+        const endCred = new TextBlock("startendSong", "copycat by syncopika - opengameart.org");
+        endCred.textWrapping = true;
+        endCred.resizeToFit = true;
+
+        const loseCred = new TextBlock("loseSong", "Eye of the Storm by Joth - opengameart.org");
+        loseCred.textWrapping = true;
+        loseCred.resizeToFit = true;
+
+        const fireworksSfx = new TextBlock("fireworks", "rubberduck - opengameart.org")
+        fireworksSfx.textWrapping = true;
+        fireworksSfx.resizeToFit = true;
+
+        const dashCred = new TextBlock("dashCred", "Woosh Noise 1 by potentjello - freesound.org");
+        dashCred.textWrapping = true;
+        dashCred.resizeToFit = true;
+
+        //quit, sparkwarning, reset
+        const sfxCred = new TextBlock("sfxCred", "200 Free SFX - https://kronbits.itch.io/freesfx");
+        sfxCred.textWrapping = true;
+        sfxCred.resizeToFit = true;
+
+        //lighting lantern, sparkreset
+        const sfxCred2 = new TextBlock("sfxCred2", "sound pack by wobbleboxx.com - opengameart.org");
+        sfxCred2.textWrapping = true;
+        sfxCred2.resizeToFit = true;
+
+        const selectionSfxCred = new TextBlock("select", "8bit menu select by Fupi - opengameart.org");
+        selectionSfxCred.textWrapping = true;
+        selectionSfxCred.resizeToFit = true;
+
+        stackPanel.addControl(music);
+        stackPanel.addControl(source);
+        stackPanel.addControl(jumpCred);
+        stackPanel.addControl(walkCred);
+        stackPanel.addControl(gameCred);
+        stackPanel.addControl(pauseCred);
+        stackPanel.addControl(endCred);
+        stackPanel.addControl(loseCred);
+        stackPanel.addControl(fireworksSfx);
+        stackPanel.addControl(dashCred);
+        stackPanel.addControl(sfxCred);
+        stackPanel.addControl(sfxCred2);
+        stackPanel.addControl(selectionSfxCred);
+
+        const mainMenu = Button.CreateSimpleButton("mainmenu", "RETURN");
+        mainMenu.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
+        mainMenu.fontFamily = "Viga";
+        mainMenu.width = 0.2
+        mainMenu.height = "40px";
+        mainMenu.color = "white";
+        winUI.addControl(mainMenu);
+
+        mainMenu.onPointerDownObservable.add(() => {
+            this._ui.transition = true;
+            this._ui.quitSfx.play();
+        })
     }
 
     private async _initializeGameAsync(scene): Promise<void> {
-        // temporary light to light the entire scene
-        var light0 = new HemisphericLight("HemiLight", new Vector3(0, 1, 0), scene);
+        scene.ambientColor = new Color3(0.34509803921568627, 0.5568627450980392, 0.8352941176470589);
+        scene.clearColor = new Color4(0.01568627450980392, 0.01568627450980392, 0.20392156862745098);
 
         const light = new PointLight("sparklight", new Vector3(0, 0, 0), scene);
         light.diffuse = new Color3(0.08627450980392157, 0.10980392156862745, 0.15294117647058825);
@@ -568,27 +834,81 @@ class App {
 
         // Create the player
         this._player = new Player(this.assets, scene, shadowGenerator, this._input);
+        
         const camera = this._player.activatePlayerCamera();
 
         // set up lantern collision checks
         this._environment.checkLanterns(this._player);
 
+        //--Transition post process--
+        scene.registerBeforeRender(() => {
+            if (this._ui.transition) {
+                this._ui.fadeLevel -= .05;
+
+                //once the fade transition has complete, switch scenes
+                if(this._ui.fadeLevel <= 0) {
+                    this._ui.quit = true;
+                    this._ui.transition = false;
+                }
+            }
+        })
+
+        // GAME LOOP
         scene.onBeforeRenderObservable.add(() => {
             // reset the sparkler timer
             if (this._player.sparkReset) {
-                this._ui.startSparklerTimer();
+                this._ui.startSparklerTimer(this._player.sparkler);
                 this._player.sparkReset = false;
+
+                this._ui.updateLanternCount(this._player.lanternsLit);
             }
             // stop the sparkler timer after 20 seconds
             else if (this._ui.stopSpark && this._player.sparkLit) {
-                this._ui.stopSparklerTimer();
+                this._ui.stopSparklerTimer(this._player.sparkler);
                 this._player.sparkLit = false;
             }
+
+            // if you've reached the destination and lit all the lanterns
+            if (this._player.win && this._player.lanternsLit == 22) {
+                this._ui.gamePaused = true; //stop the timer so that fireworks can play and player cant move around
+                //dont allow pause menu interaction
+                this._ui.pauseBtn.isHitTestVisible = false;
+
+                let i = 10; //10 seconds
+                window.setInterval(() => {
+                    i--;
+                    if (i == 0) {
+                        this._showWin();
+                    }
+                }, 1000);
+
+                this._environment._startFireworks = true;
+                this._player.win = false;
+            }
+
             // when the game isn't paused, update the timer
             if (!this._ui.gamePaused) {
                 this._ui.updateHud();
             }
+
+            //if the player has attempted all tutorial moves, move on to the hint IF they haven't already lit the next lantern
+            if(this._player.tutorial_move && this._player.tutorial_jump && this._player.tutorial_dash && (this._ui.tutorial.isVisible || this._ui.hint.isVisible)){
+                this._ui.tutorial.isVisible = false;
+                if(!this._environment._lanternObjs[1].isLit){ // if the first lantern hasn't been lit, then give hint as to which direction to go
+                    this._ui.hint.isVisible = true;
+                } else {
+                    this._ui.hint.isVisible = false;
+                }
+            }
         });
+        //glow layer
+        const gl = new GlowLayer("glow", scene);
+        gl.intensity = 0.4;
+        this._environment._lanternObjs.forEach(lantern => {
+            gl.addIncludedOnlyMesh(lantern.mesh);
+        });
+        //webpack served from public       
+
     }
 
     private async _goToLose(): Promise<void> {
@@ -601,8 +921,45 @@ class App {
         let camera = new FreeCamera("camera1", new Vector3(0, 0, 0), scene);
         camera.setTarget(Vector3.Zero());
 
+        //--SOUNDS--
+        const start = new Sound("loseSong", "https://raw.githubusercontent.com/BabylonJS/SummerFestival/master/public/sounds/Eye of the Storm.mp3", scene, function () {
+        }, {
+            volume: 0.25,
+            loop: true,
+            autoplay: true
+        });
+        const sfx = new Sound("selection", "https://raw.githubusercontent.com/BabylonJS/SummerFestival/master/public/sounds/vgmenuselect.wav", scene, function () {
+        });
+        
         // GUI
         const guiMenu = AdvancedDynamicTexture.CreateFullscreenUI("UI");
+        guiMenu.idealHeight = 720;
+
+        //background image
+        const image = new Image("lose", "https://raw.githubusercontent.com/BabylonJS/SummerFestival/master/public/sprites/lose.jpeg");
+        image.autoScale = true;
+        guiMenu.addControl(image);
+
+        const panel = new StackPanel();
+        guiMenu.addControl(panel);
+
+        const text = new TextBlock();
+        text.fontSize = 24;
+        text.color = "white";
+        text.height = "100px";
+        text.width = "100%";
+        panel.addControl(text);
+
+        text.textHorizontalAlignment = TextBlock.HORIZONTAL_ALIGNMENT_CENTER;
+        text.textVerticalAlignment = TextBlock.VERTICAL_ALIGNMENT_CENTER;
+        text.text = "There's no fireworks this year";
+        const dots = new TextBlock();
+        dots.color = "white";
+        dots.fontSize = 24;
+        dots.height = "100px";
+        dots.width = "100%";
+        dots.text = "...."
+
         const mainBtn = Button.CreateSimpleButton("mainmenu", "MAIN MENU");
         mainBtn.width = 0.2;
         mainBtn.height = "40px";
@@ -612,6 +969,42 @@ class App {
         mainBtn.onPointerUpObservable.add(() => {
             this._goToStart();
         });
+
+        Effect.RegisterShader("fade",
+            "precision highp float;" +
+            "varying vec2 vUV;" +
+            "uniform sampler2D textureSampler; " +
+            "uniform float fadeLevel; " +
+            "void main(void){" +
+            "vec4 baseColor = texture2D(textureSampler, vUV) * fadeLevel;" +
+            "baseColor.a = 1.0;" +
+            "gl_FragColor = baseColor;" +
+            "}");
+
+        let fadeLevel = 1.0;
+        this._transition = false;
+        scene.registerBeforeRender(() => {
+            if (this._transition) {
+                fadeLevel -= .05;
+                if(fadeLevel <= 0){
+                    
+                    this._goToStart();
+                    this._transition = false;
+                }
+            }
+        })
+
+        //this handles interactions with the start button attached to the scene
+        mainBtn.onPointerUpObservable.add(() => {
+            //todo: add fade transition & selection sfx
+            scene.detachControl();
+            guiMenu.dispose();
+            
+            this._transition = true;
+            sfx.play();
+            
+        });
+
 
         // SCENE FINISHED LOADING
         await scene.whenReadyAsync();

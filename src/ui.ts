@@ -1,5 +1,5 @@
-import { Rectangle, StackPanel, TextBlock, Image, Button, AdvancedDynamicTexture, Control } from "@babylonjs/gui";
-import { Effect, PostProcess, Scene } from "@babylonjs/core";
+import { Grid, Rectangle, StackPanel, TextBlock, Image, Button, AdvancedDynamicTexture, Control } from "@babylonjs/gui";
+import { Effect, ParticleSystem, PostProcess, Scene, Sound } from "@babylonjs/core";
 
 export class Hud {
     private _scene: Scene;
@@ -36,6 +36,23 @@ export class Hud {
     private _playerUI;
     private _pauseMenu;
     private _controls;
+    public tutorial;
+    public hint;
+
+    // Mobile
+    public isMobile: boolean;
+    public jumpBtn: Button;
+    public dashBtn: Button;
+    public leftBtn: Button;
+    public rightBtn: Button;
+    public upBtn: Button;
+    public downBtn: Button;
+
+    // Sounds
+    public quitSfx: Sound;
+    private _sfx: Sound;
+    private _pause: Sound;
+    private _sparkWarningSfx: Sound;
 
     constructor (scene: Scene) {
         this._scene = scene;
@@ -131,10 +148,163 @@ export class Hud {
             // when game is paused, make sure that the next start time is the time it was when paused
             this.gamePaused = true;
             this._prevTime = this.time;
+
+            // SOUNDS
+            this._scene.getSoundByName("gameSong")?.pause();
+            this._pause.play(); // play pause music
         });
+
+        // popup tutorials + hint
+        const tutorial = new Rectangle();
+        tutorial.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+        tutorial.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+        tutorial.top = "12%";
+        tutorial.left = "-1%";
+        tutorial.height = 0.2;
+        tutorial.width = 0.2;
+        tutorial.thickness = 0;
+        tutorial.alpha = 0.6;
+        this._playerUI.addControl(tutorial);
+        this.tutorial = tutorial;
+        //movement image, will disappear once you attempt all of the moves
+        let movementPC = new Image("pause", "https://raw.githubusercontent.com/BabylonJS/SummerFestival/master/public/sprites/tutorial.jpeg");
+        tutorial.addControl(movementPC);
+
+        const hint = new Rectangle();
+        hint.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+        hint.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+        hint.top = "14%";
+        hint.left = "-4%";
+        hint.height = 0.08;
+        hint.width = 0.08;
+        hint.thickness = 0;
+        hint.alpha = 0.6;
+        hint.isVisible = false;
+        this._playerUI.addControl(hint);
+        this.hint = hint;
+        //hint to the first lantern, will disappear once you light it
+        const lanternHint = new Image("lantern1", "https://raw.githubusercontent.com/BabylonJS/SummerFestival/master/public/sprites/arrowBtn.png");
+        lanternHint.rotation = Math.PI / 2;
+        lanternHint.stretch = Image.STRETCH_UNIFORM;
+        lanternHint.height = 0.8;
+        lanternHint.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+        hint.addControl(lanternHint);
+        const moveHint = new TextBlock("move", "Move Right");
+        moveHint.color = "white";
+        moveHint.fontSize = "12px";
+        moveHint.fontFamily = "Viga";
+        moveHint.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
+        moveHint.textWrapping = true;
+        moveHint.resizeToFit = true;
+        hint.addControl(moveHint);
+
 
         this._createPauseMenu();
         this._createControlMenu();
+        this._loadSounds(scene);
+
+        // Check if Mobile, add button controls
+        if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+            this.isMobile = true; // tells inputController to track mobile inputs
+
+            //tutorial image
+            movementPC.isVisible = false;
+            let movementMobile = new Image("pause", "https://raw.githubusercontent.com/BabylonJS/SummerFestival/master/public/sprites/tutorialMobile.jpeg");
+            tutorial.addControl(movementMobile);
+            //--ACTION BUTTONS--
+            // container for action buttons (right side of screen)
+            const actionContainer = new Rectangle();
+            actionContainer.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+            actionContainer.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
+            actionContainer.height = 0.4;
+            actionContainer.width = 0.2;
+            actionContainer.left = "-2%";
+            actionContainer.top = "-2%";
+            actionContainer.thickness = 0;
+            playerUI.addControl(actionContainer);
+
+            //grid for action button placement
+            const actionGrid = new Grid();
+            actionGrid.addColumnDefinition(.5);
+            actionGrid.addColumnDefinition(.5);
+            actionGrid.addRowDefinition(.5);
+            actionGrid.addRowDefinition(.5);
+            actionContainer.addControl(actionGrid);
+
+            const dashBtn = Button.CreateImageOnlyButton("dash", "https://raw.githubusercontent.com/BabylonJS/SummerFestival/master/public/sprites/aBtn.png");
+            dashBtn.thickness = 0;
+            dashBtn.alpha = 0.8;
+            dashBtn.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+            this.dashBtn = dashBtn;
+
+            const jumpBtn = Button.CreateImageOnlyButton("jump", "https://raw.githubusercontent.com/BabylonJS/SummerFestival/master/public/sprites/bBtn.png");
+            jumpBtn.thickness = 0;
+            jumpBtn.alpha = 0.8;
+            jumpBtn.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+            this.jumpBtn = jumpBtn;
+
+            actionGrid.addControl(dashBtn, 0, 1);
+            actionGrid.addControl(jumpBtn, 1, 0);
+
+            //--MOVEMENT BUTTONS--
+            // container for movement buttons (section left side of screen)
+            const moveContainer = new Rectangle();
+            moveContainer.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+            moveContainer.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
+            moveContainer.height = 0.4;
+            moveContainer.width = 0.4;
+            moveContainer.left = "2%";
+            moveContainer.top = "-2%";
+            moveContainer.thickness = 0;
+            playerUI.addControl(moveContainer);
+
+            //grid for placement of arrow keys
+            const grid = new Grid();
+            grid.addColumnDefinition(.4);
+            grid.addColumnDefinition(.4);
+            grid.addColumnDefinition(.4);
+            grid.addRowDefinition(.5);
+            grid.addRowDefinition(.5);
+            moveContainer.addControl(grid);
+
+            const leftBtn = Button.CreateImageOnlyButton("left", "https://raw.githubusercontent.com/BabylonJS/SummerFestival/master/public/sprites/arrowBtn.png");
+            leftBtn.thickness = 0;
+            leftBtn.rotation = -Math.PI / 2;
+            leftBtn.color = "white";
+            leftBtn.alpha = 0.8;
+            leftBtn.width = 0.8;
+            leftBtn.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+            this.leftBtn = leftBtn;
+
+            const rightBtn = Button.CreateImageOnlyButton("right", "https://raw.githubusercontent.com/BabylonJS/SummerFestival/master/public/sprites/arrowBtn.png");
+            rightBtn.rotation = Math.PI / 2;
+            rightBtn.thickness = 0;
+            rightBtn.color = "white";
+            rightBtn.alpha = 0.8;
+            rightBtn.width = 0.8;
+            rightBtn.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+            this.rightBtn = rightBtn;
+
+            const upBtn = Button.CreateImageOnlyButton("up", "https://raw.githubusercontent.com/BabylonJS/SummerFestival/master/public/sprites/arrowBtn.png");
+            upBtn.thickness = 0;
+            upBtn.alpha = 0.8;
+            upBtn.color = "white";
+            this.upBtn = upBtn;
+
+            const downBtn = Button.CreateImageOnlyButton("down", "https://raw.githubusercontent.com/BabylonJS/SummerFestival/master/public/sprites/arrowBtn.png");
+            downBtn.thickness = 0;
+            downBtn.rotation = Math.PI;
+            downBtn.color = "white";
+            downBtn.alpha = 0.8;
+            this.downBtn = downBtn;
+
+            //arrange the buttons in the grid
+            grid.addControl(leftBtn, 1, 0);
+            grid.addControl(rightBtn, 1, 2);
+            grid.addControl(upBtn, 0, 1);
+            grid.addControl(downBtn, 1, 1);
+
+        }
     }
 
     public updateHud(): void {
@@ -173,7 +343,7 @@ export class Hud {
 
     // Sparkler Timers
     // start and restart sparkler, handles setting the texture and animation frame
-    public startSparklerTimer(): void {
+    public startSparklerTimer(sparkler: ParticleSystem): void {
         // reset the sparkler timers & animation frames
         this.stopSpark = false;
         this._sparklerLife.cellId = 0;
@@ -185,18 +355,32 @@ export class Hud {
             clearInterval(this._sparkhandle);
         }
 
-        this._scene.getLightByName("sparklight")!.intensity = 35;
+        // SOUNDS
+        this._sparkWarningSfx.stop(); // if you restart the sparkler while this was playing (it technically would never reach cellId==10, so you need to stop the sound)
 
-        // sparkler animation, every 2 seconds update for 10 bars of sparklife
+        // reset the sparkler (particle system and light)
+        if (sparkler != null) {
+            sparkler.start();
+            this._scene.getLightByName("sparklight")!.intensity = 35;
+        }
+
+        //sparkler animation, every 2 seconds update for 10 bars of sparklife
         this._handle = setInterval(() => {
             if (!this.gamePaused) {
                 if (this._sparklerLife.cellId < 10) {
                     this._sparklerLife.cellId++;
                 }
+                if (this._sparklerLife.cellId == 9) {
+                    this._sparkWarningSfx.play();
+                }
                 if (this._sparklerLife.cellId == 10) {
                     this.stopSpark = true;
                     clearInterval(this._handle);
+                    //sfx
+                    this._sparkWarningSfx.stop();
                 }
+            } else { // if the game is paused, also pause the warning SFX
+                this._sparkWarningSfx.pause();
             }
         }, 2000);
 
@@ -206,6 +390,9 @@ export class Hud {
                     this._spark.cellId++;
                 } else if (this._sparklerLife.cellId < 10 && this._spark.cellId >= 5) {
                     this._spark.cellId = 0;
+                }
+                else {
+                    this._spark.cellId = 0;
                     clearInterval(this._sparkhandle);
                 }
             }
@@ -213,9 +400,13 @@ export class Hud {
     }
 
     // stop the sparkler, resets the texture
-    public stopSparklerTimer(): void {
+    public stopSparklerTimer(sparkler: ParticleSystem): void {
         this.stopSpark = true;
-        this._scene.getLightByName("sparklight")!.intensity = 0;
+
+        if (sparkler != null) {
+            sparkler.stop();
+            this._scene.getLightByName("sparklight")!.intensity = 0;
+        }
     }
 
     private _createPauseMenu(): void {
@@ -262,6 +453,15 @@ export class Hud {
             // game unpaused, our time is now reset
             this.gamePaused = false;
             this._startTime = new Date().getTime();
+
+            // SOUNDS
+            this._scene.getSoundByName("gameSong")?.play();
+            this._pause.stop();
+
+            if (this._sparkWarningSfx.isPaused) {
+                this._sparkWarningSfx.play();
+            }
+            this._sfx.play(); // play transition sound
         });
 
         const controlsBtn = Button.CreateSimpleButton("controls", "CONTROLS");
@@ -325,6 +525,12 @@ export class Hud {
                 effect.setFloat("fadeLevel", this.fadeLevel);
             }
             this.transition = true;
+
+            // SOUNDS
+            this.quitSfx.play();
+            if (this._pause.isPlaying) {
+                this._pause.stop();
+            }
         });
     }
 
@@ -366,6 +572,30 @@ export class Hud {
         backBtn.onPointerDownObservable.add(() => {
             this._pauseMenu.isVisble = true;
             this._controls.isVisble = false;
+
+            // play transition sound
+            this._sfx.play();
         })
+    }
+
+    // load all sounds needed for game ui interactions
+    private _loadSounds(scene: Scene): void {
+        this._pause = new Sound("pauseSong", "https://raw.githubusercontent.com/BabylonJS/SummerFestival/master/public/sounds/Snowland.wav", scene, function () {
+        }, {
+            volume: 0.2
+        });
+
+        this._sfx = new Sound("selection", "https://raw.githubusercontent.com/BabylonJS/SummerFestival/master/public/sounds/vgmenuselect.wav", scene, function () {
+        });
+
+        this.quitSfx = new Sound("quit", "https://raw.githubusercontent.com/BabylonJS/SummerFestival/master/public/sounds/Retro Event UI 13.wav", scene, function () {
+        });
+
+        this._sparkWarningSfx = new Sound("sparkWarning", "https://raw.githubusercontent.com/BabylonJS/SummerFestival/master/public/sounds/Retro Water Drop 01.wav", scene, function () {
+        }, {
+            loop: true,
+            volume: 0.5,
+            playbackRate: 0.6
+        });
     }
 }

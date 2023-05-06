@@ -1,7 +1,9 @@
 import { Scene, ActionManager, ExecuteCodeAction, Scalar } from "@babylonjs/core";
+import { Hud } from "./ui";
 
 export class PlayerInput {
     public inputMap: any;
+    private _scene: Scene;
 
     // simple movement
     public horizontal: number = 0;
@@ -14,28 +16,47 @@ export class PlayerInput {
     public jumpKeyDown: boolean = false;
     public dashing: boolean = false;
 
-    constructor(scene: Scene) {
+    // Mobile Input trackers
+    private _ui: Hud;
+    public mobileLeft: boolean;
+    public mobileRight: boolean;
+    public mobileUp: boolean;
+    public mobileDown: boolean;
+    private _mobileJump: boolean;
+    private _mobileDash: boolean;
+
+    constructor(scene: Scene, ui: Hud) {
+        this._scene = scene;
+        this._ui = ui;
+        
         scene.actionManager = new ActionManager(scene);
 
         this.inputMap = {};
-        scene.actionManager.registerAction(new ExecuteCodeAction(ActionManager.OnKeyDownTrigger, (evt) => {
+        this._scene.actionManager.registerAction(new ExecuteCodeAction(ActionManager.OnKeyDownTrigger, (evt) => {
             this.inputMap[evt.sourceEvent.key] = evt.sourceEvent.type == "keydown";
         }))
-        scene.actionManager.registerAction(new ExecuteCodeAction(ActionManager.OnKeyUpTrigger, (evt) => {
+        this._scene.actionManager.registerAction(new ExecuteCodeAction(ActionManager.OnKeyUpTrigger, (evt) => {
             this.inputMap[evt.sourceEvent.key] = evt.sourceEvent.type == "keydown";
         }))
         
         scene.onBeforeRenderObservable.add(() => {
             this._updateFromKeyboard();
         });
+
+        // Set up Mobile Controls if on mobile device
+        if (this._ui.isMobile) {
+            this._setUpMobile();
+        }
     }
 
+    // Keyboard controls & Mobile controls
+    //handles what is done when keys are pressed or if on mobile, when buttons are pressed
     private _updateFromKeyboard(): void {
-        // console.log("inputMap: ", this.inputMap);
-        if (this.inputMap["ArrowUp"]) {
+        // forward - backwards movement
+        if ((this.inputMap["ArrowUp"] || this.mobileUp) && !this._ui.gamePaused) {
             this.vertical = Scalar.Lerp(this.vertical, 1, 0.2);
             this.verticalAxis = 1;
-        } else if (this.inputMap["ArrowDown"]) {
+        } else if ((this.inputMap["ArrowDown"] || this.mobileDown) && !this._ui.gamePaused) {
             this.vertical = Scalar.Lerp(this.vertical, -1, 0.2);
             this.verticalAxis = -1;
         } else {
@@ -43,10 +64,11 @@ export class PlayerInput {
             this.verticalAxis = 0;
         }
 
-        if (this.inputMap["ArrowLeft"]) {
+        // left - right movement
+        if ((this.inputMap["ArrowLeft"] || this.mobileLeft) && !this._ui.gamePaused) {
             this.horizontal = Scalar.Lerp(this.horizontal, -1, 0.2);
             this.horizontalAxis = -1;
-        } else if (this.inputMap["ArrowRight"]) {
+        } else if ((this.inputMap["ArrowRight"]|| this.mobileRight) && !this._ui.gamePaused) {
             this.horizontal = Scalar.Lerp(this.horizontal, 1, 0.2);
             this.horizontalAxis = 1;
         } else {
@@ -55,17 +77,67 @@ export class PlayerInput {
         }
 
         // dash check
-        if (this.inputMap["Shift"]) {
+        if ((this.inputMap["Shift"] || this._mobileDash) && !this._ui.gamePaused) {
             this.dashing = true;
         } else {
             this.dashing = false;
         }
 
         // jump checks (SPACE)
-        if (this.inputMap[" "]) {
+        if ((this.inputMap[" "] || this._mobileJump) && !this._ui.gamePaused) {
             this.jumpKeyDown = true;
         } else {
             this.jumpKeyDown = false;
         }
+    }
+
+    // Mobile controls
+    private _setUpMobile(): void {
+        //Jump Button
+        this._ui.jumpBtn.onPointerDownObservable.add(() => {
+            this._mobileJump = true;
+        });
+        this._ui.jumpBtn.onPointerUpObservable.add(() => {
+            this._mobileJump = false;
+        });
+
+        //Dash Button
+        this._ui.dashBtn.onPointerDownObservable.add(() => {
+            this._mobileDash = true;
+        });
+        this._ui.dashBtn.onPointerUpObservable.add(() => {
+            this._mobileDash = false;
+        });
+
+        //Arrow Keys
+        this._ui.leftBtn.onPointerDownObservable.add(() => {
+            this.mobileLeft = true;
+        });
+        this._ui.leftBtn.onPointerUpObservable.add(() => {
+            this.mobileLeft = false;
+        });
+
+        this._ui.rightBtn.onPointerDownObservable.add(() => {
+            this.mobileRight = true;
+        });
+        this._ui.rightBtn.onPointerUpObservable.add(() => {
+            this.mobileRight = false;
+        });
+
+        this._ui.upBtn.onPointerDownObservable.add(() => {
+            this.mobileUp = true;
+        });
+        this._ui.upBtn.onPointerUpObservable.add(() => {
+            this.mobileUp = false;
+        });
+
+        this._ui.downBtn.onPointerDownObservable.add(() => {
+            this.mobileDown = true;
+        });
+        this._ui.downBtn.onPointerUpObservable.add(() => {
+            this.mobileDown = false;
+        });
+
+
     }
 }
